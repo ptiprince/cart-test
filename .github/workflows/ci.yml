@@ -1,0 +1,86 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+#
+# CI pipeline for Cart API test project
+#
+# This workflow is a quality gate for API automation.
+# It runs the full pytest suite on every push and pull request
+# targeting the main branch.
+#
+# The pipeline relies solely on pytest exit codes:
+# - exit code 0   -> all tests passed, quality gate is green
+# - exit code !=0 -> at least one test failed, merge must be blocked
+#
+# This design is intentional:
+# - no custom scripts
+# - no try/catch wrappers
+# - deterministic and interview-friendly behavior
+
+name: CI
+
+# Workflow triggers
+# "on" is wrapped in quotes to avoid YAML 1.1 boolean ambiguity
+# and to keep VS Code schema validation clean.
+"on":
+  # Run CI on every push to main branch
+  push:
+    branches:
+      - main
+
+  # Run CI on every pull request targeting main branch
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  tests:
+    # Use GitHub-hosted Ubuntu runner
+    # Ensures clean, reproducible environment for every run
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout repository
+      # Clones the repository into the runner workspace
+      # Without this step, no project files are available
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Python runtime
+      # Python version must match local development environment
+      # to avoid version-specific behavior differences
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Step 3: Install project dependencies
+      # Only minimal dependencies required to execute the test suite
+      # No build tools, linters, or reporting plugins by design
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            pytest \
+            pytest-rerunfailures \
+            requests \
+            requests-mock
+
+      # Step 4: Run pytest test suite
+      #
+      # Flags explanation:
+      # -x
+      #   Fail fast: stop test execution on first failure.
+      #   Reduces CI runtime and provides fast feedback.
+      #
+      # --reruns 2
+      #   Retry failed tests up to 2 times.
+      #   Protects against transient infrastructure issues.
+      #
+      # --reruns-delay 1
+      #   Adds a short delay between retries to avoid immediate re-failure.
+      #
+      # Business rule:
+      # pytest exit code controls the CI result directly.
+      - name: Run tests
+        run: |
+          pytest -x --reruns 2 --reruns-delay 1
+
